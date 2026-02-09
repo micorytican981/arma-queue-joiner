@@ -1,3 +1,4 @@
 pyautogui==0.9.54
 numpy==2.2.3
 Pillow==11.1.0
+keyboard==0.13.5

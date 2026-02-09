@@ -8,6 +8,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+import keyboard
 import numpy as np
 import pyautogui
 from PIL import ImageGrab
@@ -25,7 +26,6 @@ class QueueJoiner:
         self.attempt = 0
 
         # Configurable timings (seconds)
-        self.countdown = 5
         self.wait_after_click = 2.0
         self.escape_hold = 1.5
         self.pause_before_retry = 0.5
@@ -70,19 +70,16 @@ class QueueJoiner:
         time.sleep(duration)
         pyautogui.keyUp("escape")
 
-    def start(self):
+    def start(self, mouse_x, mouse_y):
         self.running = True
         self.attempt = 0
-        self.mouse_x, self.mouse_y = pyautogui.position()
-        self.on_log(f"Mouse position saved: ({self.mouse_x}, {self.mouse_y})")
+        self.mouse_x = mouse_x
+        self.mouse_y = mouse_y
+        self.on_log(f"Mouse position: ({self.mouse_x}, {self.mouse_y})")
         self.on_state_change("running")
 
-        # Countdown
-        for i in range(self.countdown, 0, -1):
-            if not self.running:
-                return
-            self.on_log(f"Starting in {i}...")
-            time.sleep(1)
+        # Small delay so the hotkey itself doesn't interfere
+        time.sleep(0.3)
 
         # Main loop
         while self.running:
@@ -154,7 +151,10 @@ class App(tk.Tk):
     """Main application window."""
 
     WINDOW_WIDTH = 520
-    WINDOW_HEIGHT = 480
+    WINDOW_HEIGHT = 520
+
+    HOTKEY_OPTIONS = ["F5", "F6", "F7", "F8", "F9", "F10"]
+    STOP_HOTKEY = "F4"
 
     def __init__(self):
         super().__init__()
@@ -168,8 +168,11 @@ class App(tk.Tk):
             on_state_change=self._update_state,
         )
         self.worker_thread = None
+        self.current_hotkey = None
+        self.current_stop_hotkey = None
 
         self._build_ui()
+        self._register_hotkeys()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ---- UI ----
@@ -193,6 +196,12 @@ class App(tk.Tk):
             foreground="#888888",
             font=("Segoe UI", 10),
         )
+        style.configure(
+            "Hotkey.TLabel",
+            background="#1e1e1e",
+            foreground="#e8a832",
+            font=("Segoe UI", 12, "bold"),
+        )
 
         # Header
         header = ttk.Label(self, text="Arma Reforger Queue Joiner", style="Header.TLabel")
@@ -201,58 +210,71 @@ class App(tk.Tk):
         # Instructions
         instructions = ttk.Label(
             self,
-            text="1. Hover your mouse over the server in the server list\n"
-                 "2. Click Start — you have 5 seconds to switch to the game\n"
-                 "3. The script clicks and retries until you are in the queue",
+            text="1. Open the game, go to server browser\n"
+                 "2. Hover your mouse over the server you want to join\n"
+                 "3. Press the Start hotkey (see below)\n"
+                 "4. The tool will click and retry until you are in the queue",
             style="TLabel",
             justify="left",
         )
         instructions.pack(padx=20, pady=(0, 10))
 
+        # Hotkey frame
+        hotkey_frame = ttk.Frame(self)
+        hotkey_frame.pack(padx=20, fill="x", pady=(0, 5))
+
+        ttk.Label(hotkey_frame, text="Start hotkey:").grid(
+            row=0, column=0, sticky="w", pady=2
+        )
+        self.hotkey_var = tk.StringVar(value="F6")
+        hotkey_combo = ttk.Combobox(
+            hotkey_frame,
+            textvariable=self.hotkey_var,
+            values=self.HOTKEY_OPTIONS,
+            state="readonly",
+            width=6,
+        )
+        hotkey_combo.grid(row=0, column=1, padx=(10, 20), pady=2)
+        hotkey_combo.bind("<<ComboboxSelected>>", lambda e: self._register_hotkeys())
+
+        ttk.Label(hotkey_frame, text="Stop hotkey:").grid(
+            row=0, column=2, sticky="w", pady=2
+        )
+        ttk.Label(hotkey_frame, text="F4", style="Hotkey.TLabel").grid(
+            row=0, column=3, padx=(10, 0), pady=2
+        )
+
+        # Big hotkey display
+        self.hotkey_display = ttk.Label(
+            self,
+            text="Hover over server, press F6 to start",
+            style="Hotkey.TLabel",
+        )
+        self.hotkey_display.pack(pady=(5, 5))
+
         # Settings frame
         settings_frame = ttk.Frame(self)
         settings_frame.pack(padx=20, fill="x")
 
-        ttk.Label(settings_frame, text="Countdown (sec):").grid(
-            row=0, column=0, sticky="w", pady=2
-        )
-        self.countdown_var = tk.StringVar(value="5")
-        ttk.Entry(settings_frame, textvariable=self.countdown_var, width=8).grid(
-            row=0, column=1, padx=(10, 0), pady=2
-        )
-
         ttk.Label(settings_frame, text="Wait after click (sec):").grid(
-            row=1, column=0, sticky="w", pady=2
+            row=0, column=0, sticky="w", pady=2
         )
         self.wait_var = tk.StringVar(value="2.0")
         ttk.Entry(settings_frame, textvariable=self.wait_var, width=8).grid(
-            row=1, column=1, padx=(10, 0), pady=2
+            row=0, column=1, padx=(10, 0), pady=2
         )
 
         ttk.Label(settings_frame, text="ESC hold time (sec):").grid(
-            row=2, column=0, sticky="w", pady=2
+            row=1, column=0, sticky="w", pady=2
         )
         self.esc_var = tk.StringVar(value="1.5")
         ttk.Entry(settings_frame, textvariable=self.esc_var, width=8).grid(
-            row=2, column=1, padx=(10, 0), pady=2
+            row=1, column=1, padx=(10, 0), pady=2
         )
 
         # Buttons
         btn_frame = ttk.Frame(self)
-        btn_frame.pack(pady=10)
-
-        self.start_btn = tk.Button(
-            btn_frame,
-            text="Start",
-            command=self._on_start,
-            bg="#2d8a4e",
-            fg="white",
-            font=("Segoe UI", 11, "bold"),
-            width=12,
-            relief="flat",
-            cursor="hand2",
-        )
-        self.start_btn.pack(side="left", padx=5)
+        btn_frame.pack(pady=8)
 
         self.stop_btn = tk.Button(
             btn_frame,
@@ -261,12 +283,12 @@ class App(tk.Tk):
             bg="#8a2d2d",
             fg="white",
             font=("Segoe UI", 11, "bold"),
-            width=12,
+            width=14,
             relief="flat",
             cursor="hand2",
             state="disabled",
         )
-        self.stop_btn.pack(side="left", padx=5)
+        self.stop_btn.pack()
 
         # Status
         self.status_label = ttk.Label(self, text="Status: Idle", style="Status.TLabel")
@@ -291,31 +313,65 @@ class App(tk.Tk):
         scrollbar.pack(side="right", fill="y")
         self.log_text.pack(side="left", fill="both", expand=True)
 
-    # ---- Actions ----
+    # ---- Hotkeys ----
 
-    def _on_start(self):
+    def _register_hotkeys(self):
+        # Unregister old hotkeys
+        if self.current_hotkey is not None:
+            try:
+                keyboard.unhook_key(self.current_hotkey)
+            except (KeyError, ValueError):
+                pass
+        if self.current_stop_hotkey is not None:
+            try:
+                keyboard.unhook_key(self.current_stop_hotkey)
+            except (KeyError, ValueError):
+                pass
+
+        start_key = self.hotkey_var.get()
+
+        self.current_hotkey = keyboard.on_press_key(
+            start_key, lambda e: self._on_hotkey_start(), suppress=False
+        )
+        self.current_stop_hotkey = keyboard.on_press_key(
+            self.STOP_HOTKEY, lambda e: self._on_stop(), suppress=False
+        )
+
+        self.hotkey_display.configure(
+            text=f"Hover over server, press {start_key} to start  |  {self.STOP_HOTKEY} to stop"
+        )
+
+    def _on_hotkey_start(self):
+        if self.joiner.running:
+            return
+
+        # Capture mouse position RIGHT NOW (while hovering over server)
+        mx, my = pyautogui.position()
+
         try:
-            self.joiner.countdown = int(self.countdown_var.get())
             self.joiner.wait_after_click = float(self.wait_var.get())
             self.joiner.escape_hold = float(self.esc_var.get())
         except ValueError:
             self._append_log("ERROR: Invalid settings values.")
             return
 
-        self.start_btn.configure(state="disabled")
-        self.stop_btn.configure(state="normal")
+        self.after(0, lambda: self.stop_btn.configure(state="normal"))
         self._clear_log()
 
-        self.worker_thread = threading.Thread(target=self.joiner.start, daemon=True)
+        self.worker_thread = threading.Thread(
+            target=self.joiner.start, args=(mx, my), daemon=True
+        )
         self.worker_thread.start()
+
+    # ---- Actions ----
 
     def _on_stop(self):
         self.joiner.stop()
-        self.start_btn.configure(state="normal")
-        self.stop_btn.configure(state="disabled")
+        self.after(0, lambda: self.stop_btn.configure(state="disabled"))
 
     def _on_close(self):
         self.joiner.stop()
+        keyboard.unhook_all()
         self.destroy()
 
     # ---- Logging ----
@@ -330,9 +386,12 @@ class App(tk.Tk):
         self.after(0, _update)
 
     def _clear_log(self):
-        self.log_text.configure(state="normal")
-        self.log_text.delete("1.0", "end")
-        self.log_text.configure(state="disabled")
+        def _update():
+            self.log_text.configure(state="normal")
+            self.log_text.delete("1.0", "end")
+            self.log_text.configure(state="disabled")
+
+        self.after(0, _update)
 
     def _update_state(self, state):
         def _update():
@@ -340,11 +399,9 @@ class App(tk.Tk):
                 self.status_label.configure(text="Status: Running...", foreground="#e8a832")
             elif state == "success":
                 self.status_label.configure(text="Status: IN QUEUE!", foreground="#2dcc5e")
-                self.start_btn.configure(state="normal")
                 self.stop_btn.configure(state="disabled")
             else:
                 self.status_label.configure(text="Status: Idle", foreground="#888888")
-                self.start_btn.configure(state="normal")
                 self.stop_btn.configure(state="disabled")
 
         self.after(0, _update)
