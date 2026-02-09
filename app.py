@@ -74,22 +74,18 @@ class QueueJoiner:
         with mss.mss() as sct:
             shot = sct.grab(self.game_monitor)
             img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-
         w, h = img.size
         region = img.crop((int(w * 0.28), int(h * 0.28), int(w * 0.52), int(h * 0.45)))
         arr = np.array(region)
-
         yellow = int(((arr[:, :, 0] > 180) & (arr[:, :, 1] > 130) & (arr[:, :, 2] < 80)).sum())
         red = int(((arr[:, :, 0] > 180) & (arr[:, :, 1] < 80) & (arr[:, :, 2] < 80)).sum())
         return yellow, red
 
     def is_server_full(self):
-        """Check if red 'server full' text is visible."""
         _, red = self.read_colors()
         return red > 50
 
     def is_queue_text_visible(self):
-        """Check if yellow queue text is visible (high threshold)."""
         yellow, _ = self.read_colors()
         return yellow > 1500
 
@@ -99,7 +95,6 @@ class QueueJoiner:
         self.mouse_x = mouse_x
         self.mouse_y = mouse_y
         self.game_monitor = find_game_monitor(mouse_x, mouse_y)
-
         self.on_log(f"Target: ({self.mouse_x}, {self.mouse_y})")
         self.on_state_change("running")
         time.sleep(0.3)
@@ -111,13 +106,11 @@ class QueueJoiner:
             move_and_click(self.mouse_x, self.mouse_y)
             time.sleep(0.2)
             move_and_click(self.mouse_x, self.mouse_y)
-
-            # Wait for dialog to appear
             time.sleep(self.wait_after_click)
+
             if not self.running:
                 break
 
-            # Quick check: is it server full? (red text appears fast)
             if self.is_server_full():
                 self.on_log(f"[{self.attempt}] Server full - retrying")
                 time.sleep(0.3)
@@ -125,18 +118,13 @@ class QueueJoiner:
                 time.sleep(self.pause_before_retry)
                 continue
 
-            # Something appeared (connecting or queue)
-            # Wait 8 seconds for connecting screen to go away
-            # Real queue stays, connecting disappears
-            self.on_log(f"[{self.attempt}] Waiting 8s for connect screen to pass...")
+            self.on_log(f"[{self.attempt}] Waiting 8s for connect screen...")
 
             still_there = True
             for i in range(8):
                 if not self.running:
                     break
                 time.sleep(1.0)
-
-                # If red appeared during wait, server full
                 if self.is_server_full():
                     self.on_log(f"[{self.attempt}] Server full after {i+1}s")
                     still_there = False
@@ -148,16 +136,13 @@ class QueueJoiner:
             if not self.running or not still_there:
                 continue
 
-            # 8 seconds passed. Now check: is yellow queue text still visible?
             if self.is_queue_text_visible():
-                # Triple check over 3 more seconds to be absolutely sure
                 confirmed = True
                 for i in range(3):
                     time.sleep(1.0)
                     if not self.is_queue_text_visible():
                         confirmed = False
                         break
-
                 if confirmed:
                     self.on_log(f"[{self.attempt}] CONFIRMED - IN QUEUE!")
                     self.on_state_change("success")
@@ -165,14 +150,12 @@ class QueueJoiner:
                     self._play_alert()
                     return
                 else:
-                    self.on_log(f"[{self.attempt}] Lost yellow after confirm - retrying")
+                    self.on_log(f"[{self.attempt}] Lost after confirm - retrying")
                     time.sleep(0.3)
                     press_escape(self.escape_hold)
                     time.sleep(self.pause_before_retry)
             else:
-                # Yellow gone = connecting screen passed, back to browser
                 self.on_log(f"[{self.attempt}] Connect screen passed - retrying")
-                # No need for ESC, already back in browser
                 time.sleep(self.pause_before_retry)
 
         self.on_log("Stopped.")
@@ -192,8 +175,8 @@ class QueueJoiner:
 
 
 class App(tk.Tk):
-    WINDOW_WIDTH = 520
-    WINDOW_HEIGHT = 460
+    WINDOW_WIDTH = 420
+    WINDOW_HEIGHT = 430
     HOTKEY_OPTIONS = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"]
 
     def __init__(self):
@@ -202,6 +185,15 @@ class App(tk.Tk):
         self.geometry(f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}")
         self.resizable(False, False)
         self.configure(bg="#1e1e1e")
+
+        # Set window icon
+        import sys, os
+        if getattr(sys, 'frozen', False):
+            icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+        else:
+            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+        if os.path.exists(icon_path):
+            self.iconbitmap(icon_path)
 
         self.joiner = QueueJoiner(on_log=self._append_log, on_state_change=self._update_state)
         self.worker_thread = None
@@ -217,42 +209,50 @@ class App(tk.Tk):
         style.configure("TFrame", background="#1e1e1e")
         style.configure("TLabel", background="#1e1e1e", foreground="#cccccc", font=("Segoe UI", 10))
         style.configure("Header.TLabel", background="#1e1e1e", foreground="#ffffff", font=("Segoe UI", 14, "bold"))
-        style.configure("Sub.TLabel", background="#1e1e1e", foreground="#666666", font=("Segoe UI", 9))
         style.configure("Status.TLabel", background="#1e1e1e", foreground="#888888", font=("Segoe UI", 10))
-        style.configure("Hotkey.TLabel", background="#1e1e1e", foreground="#e8a832", font=("Segoe UI", 11, "bold"))
 
-        ttk.Label(self, text="Arma Reforger Queue Joiner", style="Header.TLabel").pack(pady=(15, 0))
-        ttk.Label(self, text="by lime98", style="Sub.TLabel").pack(pady=(0, 8))
+        ttk.Label(self, text="Arma Reforger Queue Joiner", style="Header.TLabel").pack(pady=(15, 8))
 
-        ttk.Label(self, text="1. Open the game, go to server browser\n2. Hover your mouse over the server\n3. Press the Start hotkey\n4. Press Stop hotkey to cancel", style="TLabel", justify="left").pack(padx=20, pady=(0, 8))
+        ttk.Label(
+            self,
+            text="1. Open the game, go to server browser\n"
+                 "2. Hover your mouse over the server\n"
+                 "3. Press the Start hotkey\n"
+                 "4. Press Stop hotkey to cancel",
+            style="TLabel",
+            justify="left",
+        ).pack(padx=20, pady=(0, 10))
 
+        # Hotkeys - centered
         hf = ttk.Frame(self)
-        hf.pack(padx=20, fill="x", pady=(0, 5))
-        ttk.Label(hf, text="Start:").grid(row=0, column=0, sticky="w", pady=2)
+        hf.pack(pady=(0, 8))
+
+        ttk.Label(hf, text="Start:").grid(row=0, column=0, padx=(0, 5), pady=2)
         self.start_hotkey_var = tk.StringVar(value="F6")
         sc = ttk.Combobox(hf, textvariable=self.start_hotkey_var, values=self.HOTKEY_OPTIONS, state="readonly", width=5)
-        sc.grid(row=0, column=1, padx=(5, 20), pady=2)
+        sc.grid(row=0, column=1, padx=(0, 25), pady=2)
         sc.bind("<<ComboboxSelected>>", lambda e: self._register_hotkeys())
-        ttk.Label(hf, text="Stop:").grid(row=0, column=2, sticky="w", pady=2)
+
+        ttk.Label(hf, text="Stop:").grid(row=0, column=2, padx=(0, 5), pady=2)
         self.stop_hotkey_var = tk.StringVar(value="F4")
         sc2 = ttk.Combobox(hf, textvariable=self.stop_hotkey_var, values=self.HOTKEY_OPTIONS, state="readonly", width=5)
-        sc2.grid(row=0, column=3, padx=(5, 0), pady=2)
+        sc2.grid(row=0, column=3, pady=2)
         sc2.bind("<<ComboboxSelected>>", lambda e: self._register_hotkeys())
 
-        self.hotkey_display = ttk.Label(self, text="", style="Hotkey.TLabel")
-        self.hotkey_display.pack(pady=(3, 5))
-
+        # Settings - centered
         sf = ttk.Frame(self)
-        sf.pack(padx=20, fill="x")
+        sf.pack(pady=(0, 5))
+
         ttk.Label(sf, text="Wait after click (sec):").grid(row=0, column=0, sticky="w", pady=2)
         self.wait_var = tk.StringVar(value="2.0")
-        ttk.Entry(sf, textvariable=self.wait_var, width=8).grid(row=0, column=1, padx=(10, 0), pady=2)
+        ttk.Entry(sf, textvariable=self.wait_var, width=6).grid(row=0, column=1, padx=(10, 0), pady=2)
+
         ttk.Label(sf, text="ESC hold time (sec):").grid(row=1, column=0, sticky="w", pady=2)
         self.esc_var = tk.StringVar(value="1.5")
-        ttk.Entry(sf, textvariable=self.esc_var, width=8).grid(row=1, column=1, padx=(10, 0), pady=2)
+        ttk.Entry(sf, textvariable=self.esc_var, width=6).grid(row=1, column=1, padx=(10, 0), pady=2)
 
         self.status_label = ttk.Label(self, text="Status: Idle", style="Status.TLabel")
-        self.status_label.pack(pady=(8, 3))
+        self.status_label.pack(pady=(5, 3))
 
         lf = tk.Frame(self, bg="#1e1e1e")
         lf.pack(padx=20, pady=(0, 15), fill="both", expand=True)
@@ -278,7 +278,6 @@ class App(tk.Tk):
             keyboard.on_press_key(sk, lambda e: self._on_start(), suppress=False),
             keyboard.on_press_key(ek, lambda e: self._on_stop(), suppress=False),
         ]
-        self.hotkey_display.configure(text=f"{sk} = Start   |   {ek} = Stop")
 
     def _on_start(self):
         if self.joiner.running:

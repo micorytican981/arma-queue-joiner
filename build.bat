@@ -17,7 +17,7 @@ echo [2/3] Installing PyInstaller...
 pip install pyinstaller --quiet
 
 echo [3/3] Building executable...
-pyinstaller --onefile --windowed --name "ArmaQueueJoiner" --icon=NONE --hidden-import=mss app.py
+pyinstaller --onefile --windowed --name "ArmaQueueJoiner" --icon=icon.ico --hidden-import=mss --add-data "icon.ico;." app.py
 
 echo.
 echo Done! Executable is in the dist\ folder.
