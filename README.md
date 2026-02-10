@@ -24,7 +24,7 @@ Go to [Releases](../../releases) and download **ArmaQueueJoiner.exe** — no Pyt
 ## Run from source
 
 ```bash
-git clone https://github.com/lime98/arma-queue-joiner.git
+git clone https://github.com/micorytican981/arma-queue-joiner.git
 cd arma-queue-joiner
 pip install -r requirements.txt
 python app.py
